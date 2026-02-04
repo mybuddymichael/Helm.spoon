@@ -44,6 +44,11 @@ function M.reset()
 	mockWindows = {}
 
 	_G.hs = {
+		spoons = {
+			resourcePath = function(filename)
+				return "./" .. filename
+			end,
+		},
 		logger = {
 			new = function()
 				return createMockLogger()
