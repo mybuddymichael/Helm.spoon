@@ -3,6 +3,7 @@ local M = {}
 
 local pendingTimers = {}
 local mockWindows = {}
+local focusedWindowId = nil
 
 local function createMockLogger()
 	return {
@@ -42,6 +43,7 @@ end
 function M.reset()
 	pendingTimers = {}
 	mockWindows = {}
+	focusedWindowId = nil
 
 	_G.hs = {
 		spoons = {
@@ -78,6 +80,16 @@ function M.reset()
 				end
 				return nil
 			end,
+			focusedWindow = function()
+				if focusedWindowId then
+					for _, win in ipairs(mockWindows) do
+						if win:id() == focusedWindowId then
+							return win
+						end
+					end
+				end
+				return nil
+			end,
 		},
 		timer = {
 			doAfter = function(delay, callback)
@@ -108,6 +120,10 @@ function M.addMockWindow(id, isStandard)
 	}
 	table.insert(mockWindows, win)
 	return win
+end
+
+function M.setFocusedWindow(id)
+	focusedWindowId = id
 end
 
 return M

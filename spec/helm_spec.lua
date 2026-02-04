@@ -49,27 +49,37 @@ describe("Helm", function()
 			assert.are.same({}, Helm.windowIds)
 		end)
 
-		it("adds window id after delay for standard window", function()
-			Helm.windowIds = {}
+		it("adds window id to end when no last focused window", function()
+			Helm.windowIds = { 10, 20 }
+			Helm.lastFocusedWindowId = nil
 			local fakeWin = {
 				isStandard = function() return true end,
 				id = function() return 42 end,
 			}
 			Helm:handleWindowCreated(fakeWin)
-			-- Window should be added after timer fires
-			mock.flushTimers()
-			assert.are.same({ 42 }, Helm.windowIds)
+			assert.are.same({ 10, 20, 42 }, Helm.windowIds)
+		end)
+
+		it("adds window id after last focused window", function()
+			Helm.windowIds = { 10, 20, 30 }
+			Helm.lastFocusedWindowId = 20
+			local fakeWin = {
+				isStandard = function() return true end,
+				id = function() return 42 end,
+			}
+			Helm:handleWindowCreated(fakeWin)
+			assert.are.same({ 10, 20, 42, 30 }, Helm.windowIds)
 		end)
 
 		it("does not add duplicate window id", function()
-			Helm.windowIds = { 42 }
+			Helm.windowIds = { 10, 42, 30 }
+			Helm.lastFocusedWindowId = 10
 			local fakeWin = {
 				isStandard = function() return true end,
 				id = function() return 42 end,
 			}
 			Helm:handleWindowCreated(fakeWin)
-			mock.flushTimers()
-			assert.are.same({ 42 }, Helm.windowIds)
+			assert.are.same({ 10, 42, 30 }, Helm.windowIds)
 		end)
 	end)
 end)

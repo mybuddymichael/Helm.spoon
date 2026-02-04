@@ -20,6 +20,9 @@ Helm.windowIds = {}
 --- Window filter for watching window events
 Helm.windowFilter = nil
 
+--- Track the previously focused window for insertion logic
+Helm.lastFocusedWindowId = nil
+
 --- Padding configuration (in pixels)
 Helm.screenPadding = 12
 Helm.windowGap = 12
@@ -50,24 +53,6 @@ function Helm:_cleanupWindowIds()
 	self.windowIds = cleaned
 end
 
---- Add a new window to the end of the order
-function Helm:_addWindowToOrder(win)
-	if not win then
-		return
-	end
-	local id = win:id()
-	if not id then
-		return
-	end
-	-- Check if already in order
-	for _, existingId in ipairs(self.windowIds) do
-		if existingId == id then
-			return
-		end
-	end
-	table.insert(self.windowIds, id)
-end
-
 --- Remove a window from the order
 function Helm:_removeWindowFromOrder(win)
 	if not win then
@@ -96,7 +81,33 @@ function Helm:handleWindowCreated(win)
 	if not win or not win.isStandard or not win:isStandard() then
 		return
 	end
-	self:_addWindowToOrder(win)
+	local newId = win:id()
+	if not newId then
+		return
+	end
+
+	-- Check if already in order
+	for _, existingId in ipairs(self.windowIds) do
+		if existingId == newId then
+			return
+		end
+	end
+
+	-- Use the previously focused window (before this new window took focus)
+	local insertAfterId = self.lastFocusedWindowId
+
+	if insertAfterId then
+		-- Find the previously focused window's position and insert after it
+		for i, existingId in ipairs(self.windowIds) do
+			if existingId == insertAfterId then
+				table.insert(self.windowIds, i + 1, newId)
+				return
+			end
+		end
+	end
+
+	-- Fallback: add to the end if no previous focus or not in our order
+	table.insert(self.windowIds, newId)
 end
 
 --- Get ordered list of windows based on windowIds, grouped by screen
@@ -211,7 +222,11 @@ function Helm:start()
 			winLogger.logWindowDetails(win, self.logger, "    ")
 		end
 		self.windowFilter:subscribe("windowFocused", function(win)
-			-- self:_distributeWindows()
+			-- Track the previously focused window before updating
+			local currentFocused = hs.window.focusedWindow()
+			if currentFocused then
+				self.lastFocusedWindowId = currentFocused:id()
+			end
 		end)
 		self.windowFilter:subscribe("windowCreated", function(win)
 			self:handleWindowCreated(win)
