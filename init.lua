@@ -23,6 +23,10 @@ Helm.windowFilter = nil
 --- Track the previously focused window for insertion logic
 Helm.lastFocusedWindowId = nil
 
+--- Track zoomed state and original frame for toggle functionality (only one window at a time)
+Helm.zoomedWindowId = nil
+Helm.zoomedWindowOriginalFrame = nil
+
 --- Padding configuration (in pixels)
 Helm.screenPadding = 12
 Helm.windowGap = 12
@@ -71,9 +75,29 @@ function Helm:_removeWindowFromOrder(win)
 	self.windowIds = newOrder
 end
 
+--- Restore zoomed window to its original position if focus changes away
+function Helm:_restoreZoomedWindowIfNeeded(newFocusedId)
+	if self.zoomedWindowId and self.zoomedWindowId ~= newFocusedId then
+		local windows = self.windowFilter:getWindows()
+		for _, win in ipairs(windows) do
+			if win:id() == self.zoomedWindowId then
+				win:setFrame(self.zoomedWindowOriginalFrame)
+				break
+			end
+		end
+		self.zoomedWindowId = nil
+		self.zoomedWindowOriginalFrame = nil
+	end
+end
+
 --- Public handler for window destroyed events
 function Helm:handleWindowDestroyed(win)
 	self:_removeWindowFromOrder(win)
+	-- Clean up zoomed state if destroyed window was zoomed
+	if win and win:id() and self.zoomedWindowId == win:id() then
+		self.zoomedWindowId = nil
+		self.zoomedWindowOriginalFrame = nil
+	end
 end
 
 --- Public handler for window created events
@@ -222,10 +246,13 @@ function Helm:start()
 			winLogger.logWindowDetails(win, self.logger, "    ")
 		end
 		self.windowFilter:subscribe("windowFocused", function(win)
-			-- Track the previously focused window before updating
 			local currentFocused = hs.window.focusedWindow()
-			if currentFocused then
-				self.lastFocusedWindowId = currentFocused:id()
+			local currentId = currentFocused and currentFocused:id()
+			-- Restore any zoomed window if focus changed to a different window
+			self:_restoreZoomedWindowIfNeeded(currentId)
+			-- Track the previously focused window before updating
+			if currentId then
+				self.lastFocusedWindowId = currentId
 			end
 		end)
 		self.windowFilter:subscribe("windowCreated", function(win)
@@ -306,6 +333,43 @@ function Helm:moveWindowRight()
 	end
 end
 
+--- Toggle centering the current window at 80% screen size
+function Helm:toggleCenterWindow()
+	local win = hs.window.focusedWindow()
+	if not win then
+		return
+	end
+	local id = win:id()
+	if not id then
+		return
+	end
+
+	if self.zoomedWindowId == id then
+		-- Restore original frame
+		win:setFrame(self.zoomedWindowOriginalFrame)
+		self.zoomedWindowId = nil
+		self.zoomedWindowOriginalFrame = nil
+	else
+		-- Restore any previously zoomed window first
+		if self.zoomedWindowId then
+			self:_restoreZoomedWindowIfNeeded(id)
+		end
+		-- Store current frame and center at 80% width, 100% height (minus padding)
+		local originalFrame = win:frame()
+		local screen = win:screen()
+		local screenFrame = screen:frame()
+
+		local newWidth = screenFrame.w * 0.8
+		local newHeight = screenFrame.h - (2 * self.screenPadding)
+		local x = screenFrame.x + (screenFrame.w - newWidth) / 2
+		local y = screenFrame.y + self.screenPadding
+
+		self.zoomedWindowId = id
+		self.zoomedWindowOriginalFrame = originalFrame
+		win:setFrame({ x = x, y = y, w = newWidth, h = newHeight })
+	end
+end
+
 function Helm:bindHotkeys(mapping)
 	local spec = {
 		focusLeft = function()
@@ -319,6 +383,9 @@ function Helm:bindHotkeys(mapping)
 		end,
 		moveWindowRight = function()
 			self:moveWindowRight()
+		end,
+		toggleCenterWindow = function()
+			self:toggleCenterWindow()
 		end,
 	}
 	hs.spoons.bindHotkeysToSpec(spec, mapping)
