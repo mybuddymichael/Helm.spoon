@@ -1,6 +1,8 @@
 # Helm
 
-A Hammerspoon window management plugin that is easy to use and easy to modify.
+A window management playground, using Hammerspoon.
+
+(Very much in progress.)
 
 ## Installation
 
@@ -19,17 +21,14 @@ helm = hs.loadSpoon("helm")
 
 ```lua
 helm:bindHotkeys({
-    move_left = { { "alt" }, "h"},
-    move_right = { { "alt" }, "l"},
-    move_up = { { "alt" }, "k"},
-    move_down = { { "alt" }, "j"},
+    focusLeft = { { "alt" }, "h" },
+    focusRight = { { "alt" }, "l" },
+    moveWindowLeft = { { "alt", "shift" }, "h" },
+    moveWindowRight = { { "alt", "shift" }, "l" },
+    makeFullScreen = { { "alt", "shift" }, "return" },
 })
 helm:start()
 ```
-
-## Development
-
-Helm is intentionally created to be easy to modify. I encourage you to fork it and modify it as you see fit.
 
 ## License
 

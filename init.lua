@@ -333,8 +333,8 @@ function Helm:moveWindowRight()
 	end
 end
 
---- Toggle centering the current window at 80% screen size
-function Helm:toggleCenterWindow()
+--- Toggle making the current window full screen at 80% width
+function Helm:makeFullScreen()
 	local win = hs.window.focusedWindow()
 	if not win then
 		return
@@ -354,7 +354,7 @@ function Helm:toggleCenterWindow()
 		if self.zoomedWindowId then
 			self:_restoreZoomedWindowIfNeeded(id)
 		end
-		-- Store current frame and center at 80% width, 100% height (minus padding)
+		-- Store current frame and make full screen at 80% width, 100% height (minus padding)
 		local originalFrame = win:frame()
 		local screen = win:screen()
 		local screenFrame = screen:frame()
@@ -384,8 +384,8 @@ function Helm:bindHotkeys(mapping)
 		moveWindowRight = function()
 			self:moveWindowRight()
 		end,
-		toggleCenterWindow = function()
-			self:toggleCenterWindow()
+		makeFullScreen = function()
+			self:makeFullScreen()
 		end,
 	}
 	hs.spoons.bindHotkeysToSpec(spec, mapping)
