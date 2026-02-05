@@ -15,6 +15,7 @@ local function createMockLogger()
 end
 
 local screenIdCounter = 0
+local mainScreen = nil
 
 local function createMockScreen()
 	screenIdCounter = screenIdCounter + 1
@@ -27,6 +28,13 @@ local function createMockScreen()
 			return self._id
 		end,
 	}
+end
+
+local function getMainScreen()
+	if not mainScreen then
+		mainScreen = createMockScreen()
+	end
+	return mainScreen
 end
 
 local mockWindowFilter = nil
@@ -70,6 +78,7 @@ function M.reset()
 	focusedWindowId = nil
 	mockWindowFilter = nil
 	screenIdCounter = 0
+	mainScreen = nil
 
 	_G.hs = {
 		spoons = {
@@ -84,7 +93,7 @@ function M.reset()
 		},
 		screen = {
 			mainScreen = function()
-				return createMockScreen()
+				return getMainScreen()
 			end,
 		},
 		window = {
@@ -152,7 +161,7 @@ function M.addMockWindow(id, isStandard)
 		end,
 		setFrame = function() end,
 		screen = function()
-			return createMockScreen()
+			return getMainScreen()
 		end,
 		focus = function() end,
 		application = function()

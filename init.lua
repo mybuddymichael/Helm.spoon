@@ -39,6 +39,13 @@ Helm.lastFocusedWindowId = nil
 Helm.zoomedWindowId = nil
 Helm.zoomedWindowOriginalFrame = nil
 
+--- Columns configuration: ordered list of columns for the active space
+--- Each column is { windowIds = {id1, id2, ...} }
+Helm.columns = {}
+
+--- Map of window ID to column index for quick lookup
+Helm.windowColumnMap = {}
+
 --- Padding configuration (in pixels)
 Helm.screenPadding = 12
 Helm.windowGap = 12
@@ -111,6 +118,7 @@ function Helm:_syncFromActiveSpace()
 		self.lastFocusedWindowId = space.lastFocusedWindowId
 		self.zoomedWindowId = space.zoomedWindowId
 		self.zoomedWindowOriginalFrame = space.zoomedWindowOriginalFrame
+		self.columns = space.columns or {}
 	end
 end
 
@@ -122,6 +130,7 @@ function Helm:_syncToActiveSpace()
 		space.lastFocusedWindowId = self.lastFocusedWindowId
 		space.zoomedWindowId = self.zoomedWindowId
 		space.zoomedWindowOriginalFrame = self.zoomedWindowOriginalFrame
+		space.columns = self.columns
 	end
 end
 
@@ -159,17 +168,54 @@ end
 
 --- Public handler for window destroyed events
 function Helm:handleWindowDestroyed(win)
+	if not win then
+		return
+	end
+	local id = win:id()
+	if not id then
+		return
+	end
+
 	self:_removeWindowFromOrder(win)
+
+	-- Remove from column structure
+	local colIdx = self.windowColumnMap[id]
+	if colIdx then
+		local space = self:_getSpace(self.windowSpaceMap[id])
+		if space and space.columns[colIdx] then
+			local column = space.columns[colIdx]
+			-- Remove window from column
+			local newWindowIds = {}
+			for _, wid in ipairs(column.windowIds) do
+				if wid ~= id then
+					table.insert(newWindowIds, wid)
+				end
+			end
+			column.windowIds = newWindowIds
+			-- Remove column if empty
+			if #column.windowIds == 0 then
+				table.remove(space.columns, colIdx)
+				-- Update column indices for remaining windows
+				self.windowColumnMap[id] = nil
+				for wid, oldColIdx in pairs(self.windowColumnMap) do
+					if oldColIdx > colIdx then
+						self.windowColumnMap[wid] = oldColIdx - 1
+					end
+				end
+			else
+				self.windowColumnMap[id] = nil
+			end
+		end
+	end
+
 	-- Clean up zoomed state if destroyed window was zoomed
-	if win and win:id() and self.zoomedWindowId == win:id() then
+	if self.zoomedWindowId == id then
 		self.zoomedWindowId = nil
 		self.zoomedWindowOriginalFrame = nil
 		self:_syncToActiveSpace()
 	end
 	-- Remove from windowSpaceMap
-	if win and win:id() then
-		self.windowSpaceMap[win:id()] = nil
-	end
+	self.windowSpaceMap[id] = nil
 end
 
 --- Public handler for window created events
@@ -210,6 +256,22 @@ function Helm:handleWindowCreated(win)
 		for i, existingId in ipairs(activeSpace.windowIds) do
 			if existingId == insertAfterId then
 				table.insert(activeSpace.windowIds, i + 1, newId)
+				-- Also insert as new column after the column containing insertAfterId
+				local insertCol = self.windowColumnMap[insertAfterId]
+				if insertCol then
+					table.insert(activeSpace.columns, insertCol + 1, { windowIds = { newId } })
+					self.windowColumnMap[newId] = insertCol + 1
+					-- Update column indices for windows after the inserted column
+					for wid, colIdx in pairs(self.windowColumnMap) do
+						if colIdx > insertCol + 1 then
+							self.windowColumnMap[wid] = colIdx + 1
+						end
+					end
+				else
+					-- Fallback: add to end
+					table.insert(activeSpace.columns, { windowIds = { newId } })
+					self.windowColumnMap[newId] = #activeSpace.columns
+				end
 				self:_syncFromActiveSpace()
 				return
 			end
@@ -218,7 +280,140 @@ function Helm:handleWindowCreated(win)
 
 	-- Fallback: add to the end if no previous focus or not in our order
 	table.insert(activeSpace.windowIds, newId)
+	table.insert(activeSpace.columns, { windowIds = { newId } })
+	self.windowColumnMap[newId] = #activeSpace.columns
 	self:_syncFromActiveSpace()
+end
+
+--- Slurp: merge focused window into the column to the left
+function Helm:slurp()
+	local win = hs.window.focusedWindow()
+	if not win then
+		return
+	end
+	local id = win:id()
+	if not id then
+		return
+	end
+
+	local space = self:_getActiveSpace()
+	if not space then
+		return
+	end
+
+	-- Check if window is in a multi-window column (can't slurp if already in one)
+	local currentColIdx = self.windowColumnMap[id]
+	if not currentColIdx then
+		return
+	end
+
+	local currentCol = space.columns[currentColIdx]
+	if not currentCol then
+		return
+	end
+
+	-- Can't slurp if already in multi-window column
+	if #currentCol.windowIds > 1 then
+		return
+	end
+
+	-- Can't slurp if no column to the left
+	if currentColIdx <= 1 then
+		return
+	end
+
+	-- Can't slurp if single window in space
+	if #space.columns <= 1 then
+		return
+	end
+
+	-- Get target column (to the left)
+	local targetColIdx = currentColIdx - 1
+	local targetCol = space.columns[targetColIdx]
+
+	-- Add window to bottom of target column
+	table.insert(targetCol.windowIds, id)
+
+	-- Remove the now-empty current column
+	table.remove(space.columns, currentColIdx)
+
+	-- Rebuild column map
+	self:_rebuildColumnMap()
+
+	self:_syncToActiveSpace()
+	self:_distributeWindows()
+	win:focus()
+end
+
+--- Barf: push focused window out to its own column on the right
+function Helm:barf()
+	local win = hs.window.focusedWindow()
+	if not win then
+		return
+	end
+	local id = win:id()
+	if not id then
+		return
+	end
+
+	local space = self:_getActiveSpace()
+	if not space then
+		return
+	end
+
+	-- Get current column
+	local currentColIdx = self.windowColumnMap[id]
+	if not currentColIdx then
+		return
+	end
+
+	local currentCol = space.columns[currentColIdx]
+	if not currentCol then
+		return
+	end
+
+	-- Can't barf if alone in column
+	if #currentCol.windowIds <= 1 then
+		return
+	end
+
+	-- Remove window from current column
+	local newWindowIds = {}
+	local windowPos = nil
+	for i, wid in ipairs(currentCol.windowIds) do
+		if wid == id then
+			windowPos = i
+		else
+			table.insert(newWindowIds, wid)
+		end
+	end
+	currentCol.windowIds = newWindowIds
+
+	-- Create new column with this window
+	local newCol = { windowIds = { id } }
+	table.insert(space.columns, currentColIdx + 1, newCol)
+
+	-- Rebuild column map
+	self:_rebuildColumnMap()
+
+	self:_syncToActiveSpace()
+	self:_distributeWindows()
+	win:focus()
+end
+
+--- Rebuild the windowColumnMap from current columns structure
+function Helm:_rebuildColumnMap()
+	self.windowColumnMap = {}
+	local space = self:_getActiveSpace()
+	if not space then
+		return
+	end
+
+	for colIdx, col in ipairs(space.columns) do
+		for _, wid in ipairs(col.windowIds) do
+			self.windowColumnMap[wid] = colIdx
+		end
+	end
 end
 
 --- Get ordered list of windows based on windowIds, grouped by screen
@@ -242,6 +437,7 @@ function Helm:_getOrderedWindowsByScreen()
 	-- Add any new windows not yet in windowIds or windowSpaceMap (at the end)
 	-- These will be assigned to the active space
 	local idSet = self:_buildWindowIdSet()
+	local space = self:_getActiveSpace()
 	for _, win in ipairs(allWindows) do
 		local winId = win:id()
 		if not idSet[winId] and not self.windowSpaceMap[winId] then
@@ -249,6 +445,11 @@ function Helm:_getOrderedWindowsByScreen()
 			-- Also add to active space's windowIds for next time
 			table.insert(self.windowIds, winId)
 			self.windowSpaceMap[winId] = self.activeSpaceId
+			-- Create a single-window column for this window
+			if space then
+				table.insert(space.columns, { windowIds = { winId } })
+				self.windowColumnMap[winId] = #space.columns
+			end
 		end
 	end
 
@@ -276,40 +477,71 @@ function Helm:_distributeWindows()
 		return
 	end
 
-	local windowsByScreen = self:_getOrderedWindowsByScreen()
-	local totalWindows = 0
-	for _, group in pairs(windowsByScreen) do
-		totalWindows = totalWindows + #group.windows
+	local space = self:_getActiveSpace()
+	if not space then
+		return
 	end
-	self.logger.d("Total windows to distribute: " .. totalWindows)
-	self.logger.d("Window order: " .. table.concat(self.windowIds, ", "))
 
-	-- Distribute windows on each screen independently
-	for screenId, group in pairs(windowsByScreen) do
-		local frame = group.screen:frame()
-		local count = #group.windows
+	local allWindows = self.windowFilter:getWindows()
+	local windowsById = {}
+	for _, win in ipairs(allWindows) do
+		windowsById[win:id()] = win
+	end
 
-		winLogger.logScreenInfo(group.screen, self.logger)
-		self.logger.d("  " .. count .. " windows on this screen:")
-		for i, win in ipairs(group.windows) do
-			self.logger.d("  [" .. i .. "] ID: " .. win:id())
-			winLogger.logWindowDetails(win, self.logger, "    ")
+	-- Group columns by screen
+	local columnsByScreen = {}
+	for colIdx, col in ipairs(space.columns) do
+		-- Get screen from first window in column
+		if #col.windowIds > 0 then
+			local firstWin = windowsById[col.windowIds[1]]
+			if firstWin then
+				local screen = firstWin:screen()
+				if screen then
+					local screenId = screen:id()
+					if not columnsByScreen[screenId] then
+						columnsByScreen[screenId] = { screen = screen, columns = {} }
+					end
+					table.insert(columnsByScreen[screenId].columns, col)
+				end
+			end
 		end
+	end
 
-		if count > 0 then
+	-- Distribute columns on each screen
+	for screenId, group in pairs(columnsByScreen) do
+		local frame = group.screen:frame()
+		local numColumns = #group.columns
+
+		if numColumns > 0 then
 			local screenPadding = self.screenPadding
 			local windowGap = self.windowGap
 
-			-- Calculate available space after padding and gaps
-			local totalGaps = (count - 1) * windowGap
+			-- Calculate horizontal space for columns
+			local totalGaps = (numColumns - 1) * windowGap
 			local availableWidth = frame.w - (2 * screenPadding) - totalGaps
-			local width = availableWidth / count
+			local colWidth = availableWidth / numColumns
 
-			for i, win in ipairs(group.windows) do
-				local x = frame.x + screenPadding + (i - 1) * (width + windowGap)
-				local y = frame.y + screenPadding
-				local h = frame.h - (2 * screenPadding)
-				win:setFrame({ x = x, y = y, w = width, h = h })
+			-- Distribute each column
+			for colIdx, col in ipairs(group.columns) do
+				local numWindows = #col.windowIds
+				if numWindows > 0 then
+					local colX = frame.x + screenPadding + (colIdx - 1) * (colWidth + windowGap)
+
+					-- Calculate vertical space for windows in this column
+					local verticalGaps = (numWindows - 1) * windowGap
+					local availableHeight = frame.h - (2 * screenPadding) - verticalGaps
+					local winHeight = availableHeight / numWindows
+
+					-- Distribute windows vertically within the column
+					for winIdx, winId in ipairs(col.windowIds) do
+						local win = windowsById[winId]
+						if win then
+							local x = colX
+							local y = frame.y + screenPadding + (winIdx - 1) * (winHeight + windowGap)
+							win:setFrame({ x = x, y = y, w = colWidth, h = winHeight })
+						end
+					end
+				end
 			end
 		end
 	end
@@ -328,10 +560,13 @@ function Helm:_initSpaces()
 			lastFocusedWindowId = nil,
 			zoomedWindowId = nil,
 			zoomedWindowOriginalFrame = nil,
+			columns = {},
 		}
 	end
 	self.activeSpaceId = 1
 	self.windowSpaceMap = {}
+	self.windowColumnMap = {}
+	self.columns = {}
 	self:_syncFromActiveSpace()
 end
 
@@ -421,8 +656,29 @@ function Helm:moveWindowToSpace(win, targetSpaceId)
 
 	self.logger.d("Moving window " .. winId .. " from space " .. sourceSpaceId .. " to space " .. targetSpaceId)
 
-	-- Remove from source space
+	-- Barf window first if it's in a multi-window column
 	local sourceSpace = self:_getSpace(sourceSpaceId)
+	if sourceSpace then
+		local colIdx = self.windowColumnMap[winId]
+		if colIdx then
+			local column = sourceSpace.columns[colIdx]
+			if column and #column.windowIds > 1 then
+				-- Remove from current column
+				local newWindowIds = {}
+				for _, wid in ipairs(column.windowIds) do
+					if wid ~= winId then
+						table.insert(newWindowIds, wid)
+					end
+				end
+				column.windowIds = newWindowIds
+				-- Create new column with this window (at position after original column)
+				table.insert(sourceSpace.columns, colIdx + 1, { windowIds = { winId } })
+				self:_rebuildColumnMap()
+			end
+		end
+	end
+
+	-- Remove from source space
 	if sourceSpace then
 		local newOrder = {}
 		for _, id in ipairs(sourceSpace.windowIds) do
@@ -440,16 +696,30 @@ function Helm:moveWindowToSpace(win, targetSpaceId)
 			sourceSpace.zoomedWindowId = nil
 			sourceSpace.zoomedWindowOriginalFrame = nil
 		end
+		-- Remove from source space columns
+		local sourceColIdx = self.windowColumnMap[winId]
+		if sourceColIdx and sourceSpace.columns[sourceColIdx] then
+			table.remove(sourceSpace.columns, sourceColIdx)
+		end
 	end
 
 	-- Add to target space
 	local targetSpace = self:_getSpace(targetSpaceId)
+	local targetColIdx = nil
 	if targetSpace then
 		table.insert(targetSpace.windowIds, winId)
+		-- Add as new column at end
+		table.insert(targetSpace.columns, { windowIds = { winId } })
+		targetColIdx = #targetSpace.columns
 	end
 
-	-- Update windowSpaceMap
+	-- Update windowSpaceMap and windowColumnMap
 	self.windowSpaceMap[winId] = targetSpaceId
+	self.windowColumnMap[winId] = targetColIdx
+
+	-- Note: We don't call _rebuildColumnMap() here because it only rebuilds
+	-- for the active space, and the window has been moved to targetSpace.
+	-- The windowColumnMap[winId] is already set correctly above.
 
 	-- If moving to the active space, redistribute
 	if targetSpaceId == self.activeSpaceId then
@@ -578,6 +848,10 @@ function Helm:_initializeWindowOrderFromCurrentPositions(windows)
 				table.insert(activeSpace.windowIds, winId)
 				-- Map to active space
 				self.windowSpaceMap[winId] = self.activeSpaceId
+				-- Create a single-window column for this window
+				table.insert(activeSpace.columns, { windowIds = { winId } })
+				-- Update column map
+				self.windowColumnMap[winId] = #activeSpace.columns
 			end
 		end
 		self:_syncFromActiveSpace()
@@ -698,7 +972,7 @@ function Helm:focusRight()
 	end
 end
 
---- Move the current window left in the order
+--- Move the current window left in the order (operates on entire columns)
 function Helm:moveWindowLeft()
 	local win = hs.window.focusedWindow()
 	if not win then
@@ -709,19 +983,35 @@ function Helm:moveWindowLeft()
 		return
 	end
 
-	for i, existingId in ipairs(self.windowIds) do
-		if existingId == id and i > 1 then
-			-- Swap with previous window
-			self.windowIds[i] = self.windowIds[i - 1]
-			self.windowIds[i - 1] = id
-			self:_syncToActiveSpace()
-			self:_distributeWindows()
-			return
-		end
+	local space = self:_getActiveSpace()
+	if not space then
+		return
 	end
+
+	-- Get the column containing this window
+	local colIdx = self.windowColumnMap[id]
+	if not colIdx then
+		return
+	end
+
+	-- Can't move if already in leftmost column
+	if colIdx <= 1 then
+		return
+	end
+
+	-- Swap columns
+	local temp = space.columns[colIdx]
+	space.columns[colIdx] = space.columns[colIdx - 1]
+	space.columns[colIdx - 1] = temp
+
+	-- Rebuild column map
+	self:_rebuildColumnMap()
+
+	self:_syncToActiveSpace()
+	self:_distributeWindows()
 end
 
---- Move the current window right in the order
+--- Move the current window right in the order (operates on entire columns)
 function Helm:moveWindowRight()
 	local win = hs.window.focusedWindow()
 	if not win then
@@ -732,16 +1022,32 @@ function Helm:moveWindowRight()
 		return
 	end
 
-	for i, existingId in ipairs(self.windowIds) do
-		if existingId == id and i < #self.windowIds then
-			-- Swap with next window
-			self.windowIds[i] = self.windowIds[i + 1]
-			self.windowIds[i + 1] = id
-			self:_syncToActiveSpace()
-			self:_distributeWindows()
-			return
-		end
+	local space = self:_getActiveSpace()
+	if not space then
+		return
 	end
+
+	-- Get the column containing this window
+	local colIdx = self.windowColumnMap[id]
+	if not colIdx then
+		return
+	end
+
+	-- Can't move if already in rightmost column
+	if colIdx >= #space.columns then
+		return
+	end
+
+	-- Swap columns
+	local temp = space.columns[colIdx]
+	space.columns[colIdx] = space.columns[colIdx + 1]
+	space.columns[colIdx + 1] = temp
+
+	-- Rebuild column map
+	self:_rebuildColumnMap()
+
+	self:_syncToActiveSpace()
+	self:_distributeWindows()
 end
 
 --- Toggle making the current window full screen at 80% width
@@ -808,6 +1114,12 @@ function Helm:bindHotkeys(mapping)
 		end,
 		makeFullScreen = function()
 			self:makeFullScreen()
+		end,
+		slurp = function()
+			self:slurp()
+		end,
+		barf = function()
+			self:barf()
 		end,
 		activateSpace1 = function()
 			self:activateSpace(1)

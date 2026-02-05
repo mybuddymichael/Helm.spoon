@@ -138,13 +138,15 @@ describe("Helm", function()
 		before_each(function()
 			-- Initialize spaces first
 			Helm:_initSpaces()
-			-- Set up initial spaces state
-			Helm.spaces[1] = { id = 1, name = "space1", windowIds = { 10, 20 }, lastFocusedWindowId = 10, zoomedWindowId = nil, zoomedWindowOriginalFrame = nil }
-			Helm.spaces[2] = { id = 2, name = "space2", windowIds = { 30, 40 }, lastFocusedWindowId = 30, zoomedWindowId = nil, zoomedWindowOriginalFrame = nil }
+			-- Set up initial spaces state with columns
+			Helm.spaces[1] = { id = 1, name = "space1", windowIds = { 10, 20 }, lastFocusedWindowId = 10, zoomedWindowId = nil, zoomedWindowOriginalFrame = nil, columns = { { windowIds = { 10 } }, { windowIds = { 20 } } } }
+			Helm.spaces[2] = { id = 2, name = "space2", windowIds = { 30, 40 }, lastFocusedWindowId = 30, zoomedWindowId = nil, zoomedWindowOriginalFrame = nil, columns = { { windowIds = { 30 } }, { windowIds = { 40 } } } }
 			Helm.activeSpaceId = 1
 			Helm.windowSpaceMap = { [10] = 1, [20] = 1, [30] = 2, [40] = 2 }
+			Helm.windowColumnMap = { [10] = 1, [20] = 2, [30] = 1, [40] = 2 }
 			Helm.windowIds = { 10, 20 }
 			Helm.lastFocusedWindowId = 10
+			Helm.columns = Helm.spaces[1].columns
 			-- Set up windowFilter mock
 			Helm.windowFilter = hs.window.filter.new()
 		end)
