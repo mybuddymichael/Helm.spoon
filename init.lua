@@ -46,6 +46,9 @@ Helm.windowGap = 12
 --- Size of visible pixel when window is hidden (macOS doesn't allow completely hiding windows)
 Helm.hiddenWindowSize = 1
 
+--- Benchmark module for performance testing (loaded on demand)
+Helm.benchmark = nil
+
 --- Build a set of valid window IDs for quick lookup
 function Helm:_buildWindowIdSet()
 	local set = {}
@@ -493,6 +496,9 @@ function Helm:init()
 end
 
 function Helm:start()
+	-- Load benchmark module on demand
+	self.benchmark = dofile(hs.spoons.resourcePath("benchmark.lua"))
+
 	if not self.windowFilter then
 		self.windowFilter = hs.window.filter.new(function(win)
 			return win:isStandard()
@@ -584,19 +590,26 @@ function Helm:_getWindowsInCurrentSpace()
 	local allWindows = self.windowFilter:getWindows()
 	local currentSpaceWindows = {}
 
+	-- Collect windows with cached x-position to avoid O(n log n) frame() calls
 	for _, win in ipairs(allWindows) do
 		local winId = win:id()
 		if winId and self.windowSpaceMap[winId] == self.activeSpaceId then
-			table.insert(currentSpaceWindows, win)
+			table.insert(currentSpaceWindows, {
+				win = win,
+				x = win:frame().x
+			})
 		end
 	end
 
-	-- Sort by x-position (frame.x) for left-to-right spatial navigation
+	-- Sort by cached x-position for left-to-right spatial navigation
 	table.sort(currentSpaceWindows, function(a, b)
-		local frameA = a:frame()
-		local frameB = b:frame()
-		return frameA.x < frameB.x
+		return a.x < b.x
 	end)
+
+	-- Extract just the window objects
+	for i, entry in ipairs(currentSpaceWindows) do
+		currentSpaceWindows[i] = entry.win
+	end
 
 	return currentSpaceWindows
 end
