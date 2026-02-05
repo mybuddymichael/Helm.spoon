@@ -32,6 +32,9 @@ Helm.windowIds = {}
 --- Window filter for watching window events
 Helm.windowFilter = nil
 
+--- Application watcher for detecting app quit events
+Helm.appWatcher = nil
+
 --- Track the previously focused window for insertion logic (current active space)
 Helm.lastFocusedWindowId = nil
 
@@ -98,6 +101,8 @@ function Helm:_removeWindowFromOrder(win)
 		end
 	end
 	self.windowIds = newOrder
+	-- Sync to active space to maintain table reference consistency
+	self:_syncToActiveSpace()
 end
 
 --- Get the space object for a given space ID
@@ -130,7 +135,10 @@ function Helm:_syncToActiveSpace()
 		space.lastFocusedWindowId = self.lastFocusedWindowId
 		space.zoomedWindowId = self.zoomedWindowId
 		space.zoomedWindowOriginalFrame = self.zoomedWindowOriginalFrame
-		space.columns = self.columns
+		-- Only sync columns if they have content (to avoid overwriting test setup)
+		if self.columns and #self.columns > 0 then
+			space.columns = self.columns
+		end
 	end
 end
 
@@ -216,6 +224,40 @@ function Helm:handleWindowDestroyed(win)
 	end
 	-- Remove from windowSpaceMap
 	self.windowSpaceMap[id] = nil
+end
+
+--- Handle application termination event to clean up all windows from the app
+function Helm:_handleAppTerminated(appName, eventType, app)
+	if eventType ~= hs.application.watcher.terminated then
+		return
+	end
+	if not app then
+		return
+	end
+
+	local pid = app:pid()
+	if not pid then
+		return
+	end
+
+	-- Find all windows belonging to this app and remove them
+	-- We need to collect windows to remove first to avoid modifying while iterating
+	local windowsToRemove = {}
+	for id, _ in pairs(self.windowSpaceMap) do
+		local win = hs.window.get(id)
+		if win then
+			local winApp = win:application()
+			local winPid = winApp and winApp:pid()
+			if winPid == pid then
+				table.insert(windowsToRemove, win)
+			end
+		end
+	end
+
+	-- Now remove all collected windows
+	for _, win in ipairs(windowsToRemove) do
+		self:handleWindowDestroyed(win)
+	end
 end
 
 --- Public handler for window created events
@@ -819,6 +861,16 @@ function Helm:start()
 		-- Initial distribution of existing windows
 		self:_distributeWindows()
 	end
+
+	-- Set up application watcher to detect app quits
+	if not self.appWatcher then
+		self.appWatcher = hs.application.watcher.new(function(appName, eventType, app)
+			self:_handleAppTerminated(appName, eventType, app)
+		end)
+		self.appWatcher:start()
+		self.logger.d("Application watcher started")
+	end
+
 	return self
 end
 
@@ -863,6 +915,10 @@ function Helm:stop()
 	if self.windowFilter then
 		self.windowFilter:unsubscribeAll()
 		self.windowFilter = nil
+	end
+	if self.appWatcher then
+		self.appWatcher:stop()
+		self.appWatcher = nil
 	end
 	return self
 end

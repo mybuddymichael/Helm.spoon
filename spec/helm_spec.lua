@@ -68,6 +68,77 @@ describe("Helm", function()
 		end)
 	end)
 
+	describe("application quit cleanup", function()
+		before_each(function()
+			Helm:_initSpaces()
+			-- Set up space 1 with windows from different apps
+			-- Modify the existing space table (don't create a new one) to keep the reference
+			Helm.spaces[1].windowIds = { 10, 20, 30 }
+			Helm.spaces[1].lastFocusedWindowId = 10
+			Helm.spaces[1].zoomedWindowId = nil
+			Helm.spaces[1].zoomedWindowOriginalFrame = nil
+			Helm.spaces[1].columns = { { windowIds = { 10, 20 } }, { windowIds = { 30 } } }
+			Helm.activeSpaceId = 1
+			Helm.windowSpaceMap = { [10] = 1, [20] = 1, [30] = 1 }
+			Helm.windowColumnMap = { [10] = 1, [20] = 1, [30] = 2 }
+			-- Sync from active space to get the correct table references
+			Helm:_syncFromActiveSpace()
+			-- Create windows with different PIDs (simulating different apps)
+			mock.addMockWindowWithApp(10, true, 1001) -- App A (PID 1001)
+			mock.addMockWindowWithApp(20, true, 1001) -- App A (PID 1001)
+			mock.addMockWindowWithApp(30, true, 1002) -- App B (PID 1002)
+			-- Manually create app watcher (without calling start() which would re-initialize window order)
+			Helm.appWatcher = hs.application.watcher.new(function(appName, eventType, app)
+				Helm:_handleAppTerminated(appName, eventType, app)
+			end)
+		end)
+
+		it("should clean up all windows from an app when it quits", function()
+			-- Simulate app A (PID 1001) terminating
+			mock.simulateAppTerminated(1001)
+
+			-- Both windows from app A should be removed
+			assert.are.same({ 30 }, Helm.windowIds)
+			assert.are.same({ 30 }, Helm.spaces[1].windowIds)
+			assert.is_nil(Helm.windowSpaceMap[10])
+			assert.is_nil(Helm.windowSpaceMap[20])
+			assert.are.equal(1, Helm.windowSpaceMap[30])
+		end)
+
+		it("should clean up column structure when app quits", function()
+			-- Simulate app A (PID 1001) terminating
+			mock.simulateAppTerminated(1001)
+
+			-- Column structure should be updated
+			assert.are.same({ { windowIds = { 30 } } }, Helm.columns)
+			assert.are.equal(1, Helm.windowColumnMap[30])
+			assert.is_nil(Helm.windowColumnMap[10])
+			assert.is_nil(Helm.windowColumnMap[20])
+		end)
+
+		it("should handle app quit when app has no tracked windows", function()
+			-- Simulate app C (PID 9999) terminating - no windows tracked
+			mock.simulateAppTerminated(9999)
+
+			-- All windows should remain
+			assert.are.same({ 10, 20, 30 }, Helm.windowIds)
+		end)
+
+		it("should clean up zoomed window state if app with zoomed window quits", function()
+			-- Set window 10 as zoomed
+			Helm.zoomedWindowId = 10
+			Helm.zoomedWindowOriginalFrame = { x = 0, y = 0, w = 800, h = 600 }
+			Helm:_syncToActiveSpace()
+
+			-- Simulate app A (PID 1001) terminating
+			mock.simulateAppTerminated(1001)
+
+			-- Zoomed state should be cleared
+			assert.is_nil(Helm.zoomedWindowId)
+			assert.is_nil(Helm.zoomedWindowOriginalFrame)
+		end)
+	end)
+
 	describe("handleWindowCreated", function()
 		before_each(function()
 			-- Initialize spaces for these tests
