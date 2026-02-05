@@ -507,6 +507,10 @@ function Helm:start()
 			self.logger.d('    Screen: "' .. screenName .. '" (ID: ' .. (screen and screen:id() or "nil") .. ")")
 			winLogger.logWindowDetails(win, self.logger, "    ")
 		end
+
+		-- Initialize window order based on current x positions
+		self:_initializeWindowOrderFromCurrentPositions(windows)
+
 		self.windowFilter:subscribe("windowFocused", function(win)
 			local currentFocused = hs.window.focusedWindow()
 			local currentId = currentFocused and currentFocused:id()
@@ -523,8 +527,44 @@ function Helm:start()
 			self:handleWindowDestroyed(win)
 			self:_distributeWindows()
 		end)
+
+		-- Initial distribution of existing windows
+		self:_distributeWindows()
 	end
 	return self
+end
+
+--- Initialize window order from current window positions (sorted by x coordinate)
+function Helm:_initializeWindowOrderFromCurrentPositions(windows)
+	-- Sort windows by their x position (left to right)
+	local sortedWindows = {}
+	for _, win in ipairs(windows) do
+		if win:isStandard() then
+			table.insert(sortedWindows, win)
+		end
+	end
+
+	table.sort(sortedWindows, function(a, b)
+		local frameA = a:frame()
+		local frameB = b:frame()
+		return frameA.x < frameB.x
+	end)
+
+	-- Assign sorted windows to active space
+	local activeSpace = self:_getActiveSpace()
+	if activeSpace then
+		for _, win in ipairs(sortedWindows) do
+			local winId = win:id()
+			if winId then
+				-- Add to window order
+				table.insert(activeSpace.windowIds, winId)
+				-- Map to active space
+				self.windowSpaceMap[winId] = self.activeSpaceId
+			end
+		end
+		self:_syncFromActiveSpace()
+		self.logger.d("Initialized " .. #sortedWindows .. " windows in order by x position")
+	end
 end
 
 function Helm:stop()
@@ -584,9 +624,10 @@ function Helm:focusLeft()
 		return
 	end
 
-	-- Focus the previous window (wrap around to end if at start)
-	local targetIndex = currentIndex > 1 and currentIndex - 1 or #spaceWindows
-	spaceWindows[targetIndex]:focus()
+	-- Focus the previous window (stop at start, no wrap)
+	if currentIndex > 1 then
+		spaceWindows[currentIndex - 1]:focus()
+	end
 end
 
 --- Focus the window to the right (east) of the current window (within current space only)
@@ -619,9 +660,10 @@ function Helm:focusRight()
 		return
 	end
 
-	-- Focus the next window (wrap around to start if at end)
-	local targetIndex = currentIndex < #spaceWindows and currentIndex + 1 or 1
-	spaceWindows[targetIndex]:focus()
+	-- Focus the next window (stop at end, no wrap)
+	if currentIndex < #spaceWindows then
+		spaceWindows[currentIndex + 1]:focus()
+	end
 end
 
 --- Move the current window left in the order
