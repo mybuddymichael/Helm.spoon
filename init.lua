@@ -125,7 +125,7 @@ function Helm:_syncToActiveSpace()
 	end
 end
 
---- Hide a window by moving it to bottom-right corner with minimal visible size
+--- Hide a window by moving it so only a single top-left pixel is visible
 function Helm:_hideWindow(win)
 	if not win then
 		return
@@ -134,11 +134,11 @@ function Helm:_hideWindow(win)
 	if not screen then
 		return
 	end
-	local frame = screen:frame()
-	local size = self.hiddenWindowSize
-	local x = frame.x + frame.w - size
-	local y = frame.y + frame.h - size
-	win:setFrame({ x = x, y = y, w = size, h = size })
+	local screenFrame = screen:frame()
+	local winFrame = win:frame()
+	local x = screenFrame.x + screenFrame.w - self.hiddenWindowSize
+	local y = screenFrame.y + screenFrame.h - self.hiddenWindowSize
+	win:setFrame({ x = x, y = y, w = winFrame.w, h = winFrame.h })
 end
 
 --- Restore zoomed window to its original position if focus changes away
@@ -500,8 +500,20 @@ function Helm:start()
 	self.benchmark = dofile(hs.spoons.resourcePath("benchmark.lua"))
 
 	if not self.windowFilter then
+		-- Apps to exclude from window management
+		local excludedApps = {
+			["CleanShot X"] = true,
+		}
+		-- Start with default filter that allows standard windows, excluding specific apps
 		self.windowFilter = hs.window.filter.new(function(win)
-			return win:isStandard()
+			if not win:isStandard() then
+				return false
+			end
+			local app = win:application()
+			if app and excludedApps[app:name()] then
+				return false
+			end
+			return true
 		end)
 		-- Log all windows currently allowed by the filter
 		local windows = self.windowFilter:getWindows()

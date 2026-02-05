@@ -10,6 +10,42 @@ describe("Helm", function()
 		Helm = require("init")
 	end)
 
+	describe("_hideWindow", function()
+		it("should move window without resizing", function()
+			local win = mock.addMockWindow(1, true)
+			local originalFrame = { x = 100, y = 100, w = 800, h = 600 }
+			win.frame = function() return originalFrame end
+
+			local capturedFrame = nil
+			win.setFrame = function(self, frame)
+				capturedFrame = frame
+			end
+
+			Helm:_hideWindow(win)
+
+			assert.is_not_nil(capturedFrame)
+			assert.are.equal(originalFrame.w, capturedFrame.w, "width should be preserved")
+			assert.are.equal(originalFrame.h, capturedFrame.h, "height should be preserved")
+			-- Position should be at bottom-right corner
+			local screenFrame = hs.screen.mainScreen():frame()
+			assert.are.equal(screenFrame.x + screenFrame.w - Helm.hiddenWindowSize, capturedFrame.x)
+			assert.are.equal(screenFrame.y + screenFrame.h - Helm.hiddenWindowSize, capturedFrame.y)
+		end)
+
+		it("should handle nil window gracefully", function()
+			-- Should not throw an error
+			Helm:_hideWindow(nil)
+		end)
+
+		it("should handle window with nil screen gracefully", function()
+			local win = {
+				screen = function() return nil end,
+			}
+			-- Should not throw an error
+			Helm:_hideWindow(win)
+		end)
+	end)
+
 	describe("handleWindowDestroyed", function()
 		it("handles nil window gracefully", function()
 			Helm.windowIds = { 1, 2, 3 }
@@ -149,6 +185,37 @@ describe("Helm", function()
 				assert.are.same({ 30, 40 }, distributedWindows)
 			end)
 
+			it("should not resize windows when hiding during space switch", function()
+				local win10 = mock.addMockWindow(10, true)
+				local win20 = mock.addMockWindow(20, true)
+				mock.addMockWindow(30, true)
+				mock.addMockWindow(40, true)
+
+				-- Set up specific window frames
+				local frame10 = { x = 0, y = 0, w = 600, h = 400 }
+				local frame20 = { x = 600, y = 0, w = 800, h = 600 }
+				win10.frame = function() return frame10 end
+				win20.frame = function() return frame20 end
+
+				local capturedFrames = {}
+				win10.setFrame = function(self, frame)
+					capturedFrames[10] = frame
+				end
+				win20.setFrame = function(self, frame)
+					capturedFrames[20] = frame
+				end
+
+				Helm:activateSpace(2)
+
+				-- Verify windows were moved but not resized
+				assert.is_not_nil(capturedFrames[10])
+				assert.is_not_nil(capturedFrames[20])
+				assert.are.equal(frame10.w, capturedFrames[10].w, "win10 width should be preserved")
+				assert.are.equal(frame10.h, capturedFrames[10].h, "win10 height should be preserved")
+				assert.are.equal(frame20.w, capturedFrames[20].w, "win20 width should be preserved")
+				assert.are.equal(frame20.h, capturedFrames[20].h, "win20 height should be preserved")
+			end)
+
 			it("should update lastFocusedWindowId to the space's tracked window", function()
 				mock.addMockWindow(30, true)
 				mock.addMockWindow(40, true)
@@ -189,6 +256,33 @@ describe("Helm", function()
 				Helm:moveWindowToSpace(win10, 2)
 
 				assert.are.same({ 10 }, hiddenWindows)
+			end)
+
+			it("should not resize window when hiding (preserve original dimensions)", function()
+				local win10 = mock.addMockWindow(10, true)
+				mock.addMockWindow(20, true)
+				mock.addMockWindow(30, true)
+				mock.addMockWindow(40, true)
+
+				-- Set up a specific window frame
+				local originalFrame = { x = 100, y = 100, w = 800, h = 600 }
+				win10.frame = function() return originalFrame end
+
+				local capturedFrame = nil
+				win10.setFrame = function(self, frame)
+					capturedFrame = frame
+				end
+
+				Helm:moveWindowToSpace(win10, 2)
+
+				-- Verify the window was moved but not resized
+				assert.is_not_nil(capturedFrame)
+				assert.are.equal(originalFrame.w, capturedFrame.w, "width should be preserved")
+				assert.are.equal(originalFrame.h, capturedFrame.h, "height should be preserved")
+				-- Position should be at bottom-right corner (screen w/h - hiddenWindowSize)
+				local screenFrame = hs.screen.mainScreen():frame()
+				assert.are.equal(screenFrame.x + screenFrame.w - Helm.hiddenWindowSize, capturedFrame.x)
+				assert.are.equal(screenFrame.y + screenFrame.h - Helm.hiddenWindowSize, capturedFrame.y)
 			end)
 		end)
 
