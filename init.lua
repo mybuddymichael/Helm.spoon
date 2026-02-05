@@ -364,14 +364,30 @@ function Helm:activateSpace(spaceId)
 	-- Restore and distribute windows in the new active space
 	self:_distributeWindows()
 
-	-- Focus the last focused window in this space
+	-- Focus the last focused window in this space, or the first window if none
+	local windowToFocus = nil
 	if self.lastFocusedWindowId then
 		for _, win in ipairs(allWindows) do
 			if win:id() == self.lastFocusedWindowId then
-				win:focus()
+				windowToFocus = win
 				break
 			end
 		end
+	end
+
+	-- If no last focused window found, focus the first window in the space
+	if not windowToFocus then
+		for _, win in ipairs(allWindows) do
+			local winId = win:id()
+			if winId and self.windowSpaceMap[winId] == self.activeSpaceId then
+				windowToFocus = win
+				break
+			end
+		end
+	end
+
+	if windowToFocus then
+		windowToFocus:focus()
 	end
 end
 
@@ -519,18 +535,93 @@ function Helm:stop()
 	return self
 end
 
---- Focus the window to the left (west) of the current window
-function Helm:focusLeft()
-	if self.windowFilter then
-		self.windowFilter:focusWindowWest()
+--- Get windows that belong to the current space only
+function Helm:_getWindowsInCurrentSpace()
+	if not self.windowFilter then
+		return {}
 	end
+
+	local allWindows = self.windowFilter:getWindows()
+	local currentSpaceWindows = {}
+
+	for _, win in ipairs(allWindows) do
+		local winId = win:id()
+		if winId and self.windowSpaceMap[winId] == self.activeSpaceId then
+			table.insert(currentSpaceWindows, win)
+		end
+	end
+
+	return currentSpaceWindows
 end
 
---- Focus the window to the right (east) of the current window
-function Helm:focusRight()
-	if self.windowFilter then
-		self.windowFilter:focusWindowEast()
+--- Focus the window to the left (west) of the current window (within current space only)
+function Helm:focusLeft()
+	local currentWin = hs.window.focusedWindow()
+	if not currentWin then
+		return
 	end
+
+	local currentId = currentWin:id()
+	if not currentId then
+		return
+	end
+
+	local spaceWindows = self:_getWindowsInCurrentSpace()
+	if #spaceWindows <= 1 then
+		return
+	end
+
+	-- Find current window position in the space windows list
+	local currentIndex = nil
+	for i, win in ipairs(spaceWindows) do
+		if win:id() == currentId then
+			currentIndex = i
+			break
+		end
+	end
+
+	if not currentIndex then
+		return
+	end
+
+	-- Focus the previous window (wrap around to end if at start)
+	local targetIndex = currentIndex > 1 and currentIndex - 1 or #spaceWindows
+	spaceWindows[targetIndex]:focus()
+end
+
+--- Focus the window to the right (east) of the current window (within current space only)
+function Helm:focusRight()
+	local currentWin = hs.window.focusedWindow()
+	if not currentWin then
+		return
+	end
+
+	local currentId = currentWin:id()
+	if not currentId then
+		return
+	end
+
+	local spaceWindows = self:_getWindowsInCurrentSpace()
+	if #spaceWindows <= 1 then
+		return
+	end
+
+	-- Find current window position in the space windows list
+	local currentIndex = nil
+	for i, win in ipairs(spaceWindows) do
+		if win:id() == currentId then
+			currentIndex = i
+			break
+		end
+	end
+
+	if not currentIndex then
+		return
+	end
+
+	-- Focus the next window (wrap around to start if at end)
+	local targetIndex = currentIndex < #spaceWindows and currentIndex + 1 or 1
+	spaceWindows[targetIndex]:focus()
 end
 
 --- Move the current window left in the order

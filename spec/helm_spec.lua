@@ -279,5 +279,100 @@ describe("Helm", function()
 				assert.are.same({ x = 200, y = 200, w = 300, h = 300 }, Helm.spaces[2].zoomedWindowOriginalFrame)
 			end)
 		end)
-	end)
+
+		describe("activateSpace focus behavior", function()
+			it("should focus the first window when space has no lastFocusedWindowId", function()
+				-- Set up space 2 with no last focused window
+				Helm.spaces[2].lastFocusedWindowId = nil
+				Helm.lastFocusedWindowId = nil
+
+				local win30 = mock.addMockWindow(30, true)
+				local win40 = mock.addMockWindow(40, true)
+				mock.addMockWindow(10, true)
+				mock.addMockWindow(20, true)
+
+				local focusedWindow = nil
+				win30.focus = function() focusedWindow = 30 end
+				win40.focus = function() focusedWindow = 40 end
+
+				Helm:activateSpace(2)
+
+				-- Should focus the first window in the space (30)
+				assert.are.equal(30, focusedWindow)
+			end)
+
+			it("should focus lastFocusedWindowId when available", function()
+				local win30 = mock.addMockWindow(30, true)
+				local win40 = mock.addMockWindow(40, true)
+				mock.addMockWindow(10, true)
+				mock.addMockWindow(20, true)
+
+				local focusedWindow = nil
+				win30.focus = function() focusedWindow = 30 end
+				win40.focus = function() focusedWindow = 40 end
+
+				Helm:activateSpace(2)
+
+				-- Should focus window 30 (the lastFocusedWindowId for space 2)
+				assert.are.equal(30, focusedWindow)
+			end)
+		end)
+
+		describe("focusLeft and focusRight", function()
+			before_each(function()
+				-- Set up mock windows in current space (space 1)
+				local win10 = mock.addMockWindow(10, true)
+				local win20 = mock.addMockWindow(20, true)
+				-- Set up mock windows in other space (space 2)
+				mock.addMockWindow(30, true)
+				mock.addMockWindow(40, true)
+
+				-- Track which window gets focused
+				win10.focus = function() mock.setFocusedWindow(10) end
+				win20.focus = function() mock.setFocusedWindow(20) end
+			end)
+
+			it("focusLeft should only consider windows in the current space", function()
+				-- Start focused on window 20
+				mock.setFocusedWindow(20)
+
+				-- Mock _getWindowsInCurrentSpace to return only space 1 windows
+				local originalGetWindows = Helm._getWindowsInCurrentSpace
+				Helm._getWindowsInCurrentSpace = function()
+					return {
+						{ id = function() return 10 end, focus = function() mock.setFocusedWindow(10) end },
+						{ id = function() return 20 end, focus = function() mock.setFocusedWindow(20) end },
+					}
+				end
+
+				Helm:focusLeft()
+
+				-- Should focus window 10 (the other window in space 1)
+				assert.are.equal(10, hs.window.focusedWindow():id())
+
+				Helm._getWindowsInCurrentSpace = originalGetWindows
+			end)
+
+			it("focusRight should only consider windows in the current space", function()
+				-- Start focused on window 10
+				mock.setFocusedWindow(10)
+
+				-- Mock _getWindowsInCurrentSpace to return only space 1 windows
+				local originalGetWindows = Helm._getWindowsInCurrentSpace
+				Helm._getWindowsInCurrentSpace = function()
+					return {
+						{ id = function() return 10 end, focus = function() mock.setFocusedWindow(10) end },
+						{ id = function() return 20 end, focus = function() mock.setFocusedWindow(20) end },
+					}
+				end
+
+				Helm:focusRight()
+
+				-- Should focus window 20 (the other window in space 1)
+				assert.are.equal(20, hs.window.focusedWindow():id())
+
+				Helm._getWindowsInCurrentSpace = originalGetWindows
+			end)
+		end)
+		end)
 end)
