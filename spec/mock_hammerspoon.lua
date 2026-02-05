@@ -14,36 +14,62 @@ local function createMockLogger()
 	}
 end
 
+local screenIdCounter = 0
+
 local function createMockScreen()
+	screenIdCounter = screenIdCounter + 1
 	return {
+		_id = screenIdCounter,
 		frame = function()
 			return { x = 0, y = 0, w = 1920, h = 1080 }
+		end,
+		id = function(self)
+			return self._id
 		end,
 	}
 end
 
+local mockWindowFilter = nil
+
 local function createMockWindowFilter()
-	local filter = {
+	-- Return existing filter if one exists, to ensure singleton behavior
+	if mockWindowFilter then
+		return mockWindowFilter
+	end
+	
+	mockWindowFilter = {
 		subscriptions = {},
+		windows = {},
 	}
-	function filter:setDefaultFilter()
+	function mockWindowFilter:setDefaultFilter()
 		return self
 	end
-	function filter:subscribe(event, callback)
+	function mockWindowFilter:subscribe(event, callback)
 		self.subscriptions[event] = callback
 		return self
 	end
-	function filter:unsubscribeAll()
+	function mockWindowFilter:unsubscribeAll()
 		self.subscriptions = {}
 		return self
 	end
-	return filter
+	function mockWindowFilter:getWindows()
+		return self.windows
+	end
+	function mockWindowFilter:focusWindowWest()
+		return self
+	end
+	function mockWindowFilter:focusWindowEast()
+		return self
+	end
+	return mockWindowFilter
 end
 
 function M.reset()
 	pendingTimers = {}
 	mockWindows = {}
 	focusedWindowId = nil
+	mockWindowFilter = nil
+	screenIdCounter = 0
 
 	_G.hs = {
 		spoons = {
@@ -108,17 +134,45 @@ function M.flushTimers()
 	end
 end
 
+local function createMockApplication()
+	return {
+		name = function() return "MockApp" end,
+		bundleID = function() return "com.mock.app" end,
+	}
+end
+
 function M.addMockWindow(id, isStandard)
 	local win = {
-		id = function()
-			return id
+		_id = id,
+		id = function(self)
+			return self._id
 		end,
 		isStandard = function()
 			return isStandard ~= false
 		end,
 		setFrame = function() end,
+		screen = function()
+			return createMockScreen()
+		end,
+		focus = function() end,
+		application = function()
+			return createMockApplication()
+		end,
+		title = function() return "Mock Window " .. id end,
+		role = function() return "AXWindow" end,
+		subrole = function() return "AXStandardWindow" end,
+		frame = function() return { x = 0, y = 0, w = 800, h = 600 } end,
+		isVisible = function() return true end,
+		isMinimized = function() return false end,
+		isFullScreen = function() return false end,
+		isMaximizable = function() return true end,
+		tabCount = function() return 0 end,
 	}
 	table.insert(mockWindows, win)
+	-- Also add to windowFilter if it exists
+	if mockWindowFilter then
+		mockWindowFilter.windows = mockWindows
+	end
 	return win
 end
 
