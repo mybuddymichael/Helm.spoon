@@ -575,7 +575,7 @@ function Helm:stop()
 	return self
 end
 
---- Get windows that belong to the current space only
+--- Get windows that belong to the current space only, sorted by x-position (left-to-right)
 function Helm:_getWindowsInCurrentSpace()
 	if not self.windowFilter then
 		return {}
@@ -590,6 +590,13 @@ function Helm:_getWindowsInCurrentSpace()
 			table.insert(currentSpaceWindows, win)
 		end
 	end
+
+	-- Sort by x-position (frame.x) for left-to-right spatial navigation
+	table.sort(currentSpaceWindows, function(a, b)
+		local frameA = a:frame()
+		local frameB = b:frame()
+		return frameA.x < frameB.x
+	end)
 
 	return currentSpaceWindows
 end

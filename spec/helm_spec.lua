@@ -374,5 +374,64 @@ describe("Helm", function()
 				Helm._getWindowsInCurrentSpace = originalGetWindows
 			end)
 		end)
+
+		describe("focusLeft and focusRight with spatial ordering bug", function()
+			it("should navigate based on spatial position, not windowIds order", function()
+				-- This test demonstrates the bug: windowIds order doesn't match visual layout
+				-- Windows are arranged left-to-right visually as: [win30] [win10] [win20]
+				-- But windowIds order is: 10, 20, 30 (creation/focus order)
+
+				local win10 = mock.addMockWindow(10, true)
+				local win20 = mock.addMockWindow(20, true)
+				local win30 = mock.addMockWindow(30, true)
+
+				-- Set up windowSpaceMap - all windows in space 1
+				Helm.windowSpaceMap = { [10] = 1, [20] = 1, [30] = 1 }
+				Helm.windowIds = { 10, 20, 30 }  -- Order: 10, 20, 30
+				Helm.spaces[1].windowIds = { 10, 20, 30 }
+
+				-- Mock frames to simulate visual layout: [30] [10] [20]
+				-- Window 30 at x=0 (left), window 10 at x=400 (middle), window 20 at x=800 (right)
+				win30.frame = function() return { x = 0, y = 0, w = 300, h = 600 } end
+				win10.frame = function() return { x = 400, y = 0, w = 300, h = 600 } end
+				win20.frame = function() return { x = 800, y = 0, w = 300, h = 600 } end
+
+				-- Track focus
+				local focusedId = nil
+				win10.focus = function() focusedId = 10 end
+				win20.focus = function() focusedId = 20 end
+				win30.focus = function() focusedId = 30 end
+
+				-- Test 1: Focus window 10 (middle), press left -> should go to window 30 (leftmost)
+				mock.setFocusedWindow(10)
+				focusedId = nil
+
+				Helm:focusLeft()
+
+				-- BUG: Currently returns 10 (windowIds order: 10 is at index 1, so no window to the left)
+				-- EXPECTED: Should return 30 (spatially to the left of 10)
+				assert.are.equal(30, focusedId, "focusLeft from middle window should go to leftmost window")
+
+				-- Test 2: Focus window 10 (middle), press right -> should go to window 20 (rightmost)
+				mock.setFocusedWindow(10)
+				focusedId = nil
+
+				Helm:focusRight()
+
+				-- BUG: Currently returns 20 (this happens to work because 20 is right of 10 in windowIds)
+				-- But this is coincidental - it works because windowIds order happens to match here
+				assert.are.equal(20, focusedId, "focusRight from middle window should go to rightmost window")
+
+				-- Test 3: Focus window 30 (leftmost), press right -> should go to window 10 (middle)
+				mock.setFocusedWindow(30)
+				focusedId = nil
+
+				Helm:focusRight()
+
+				-- BUG: Currently returns nil (window 30 is at end of windowIds, so no window to the right)
+				-- EXPECTED: Should return 10 (spatially to the right of 30)
+				assert.are.equal(10, focusedId, "focusRight from leftmost window should go to middle window")
+			end)
+		end)
 		end)
 end)
