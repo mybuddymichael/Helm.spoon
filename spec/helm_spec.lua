@@ -205,7 +205,7 @@ describe("Helm", function()
 		end)
 	end)
 
-	describe("virtual spaces", function()
+        describe("virtual spaces", function()
 		before_each(function()
 			-- Initialize spaces first
 			Helm:_initSpaces()
@@ -299,7 +299,48 @@ describe("Helm", function()
 			end)
 		end)
 
-		describe("moveWindowToSpace", function()
+		describe("logWindowDebugInfo", function()
+			local logs
+
+			before_each(function()
+				Helm:_initSpaces()
+				logs = {}
+				Helm.logger = {
+					d = function(message)
+						table.insert(logs, message)
+					end,
+				}
+			end)
+
+			it("logs window details with space and screen info", function()
+				local win1 = mock.addMockWindow(10, true)
+				local win2 = mock.addMockWindow(20, true)
+
+				Helm.windowFilter = hs.window.filter.new()
+				Helm.windowSpaceMap = { [10] = 1, [20] = 2 }
+
+				hs.spaces = {
+					windowSpaces = function()
+						return { 7 }
+					end,
+				}
+
+				Helm:logWindowDebugInfo()
+
+				local output = table.concat(logs, "\n")
+				assert.is_true(output:find("Window Debug Info", 1, true) ~= nil)
+				assert.is_true(output:find("Virtual Space: 1", 1, true) ~= nil)
+				assert.is_true(output:find("Virtual Space: 2", 1, true) ~= nil)
+				assert.is_true(output:find('Screen: "Mock Screen" (ID: 1)', 1, true) ~= nil)
+				assert.is_true(output:find("macOS Spaces: 7", 1, true) ~= nil)
+				assert.is_true(output:find("Window Properties:", 1, true) ~= nil)
+
+				assert.is_not_nil(win1)
+				assert.is_not_nil(win2)
+			end)
+		end)
+
+                describe("moveWindowToSpace", function()
 			it("should update windowSpaceMap and redistribute", function()
 				local win10 = mock.addMockWindow(10, true)
 				local win20 = mock.addMockWindow(20, true)
@@ -600,5 +641,5 @@ describe("Helm", function()
 				assert.are.equal(10, focusedId, "focusRight from leftmost window should go to middle window")
 			end)
 		end)
-		end)
+	end)
 end)

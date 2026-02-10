@@ -802,6 +802,59 @@ function Helm:_handleWindowFocused(win)
 	end
 end
 
+function Helm:_getWindowSpaceLabel(winId)
+        local helmSpaceId = self.windowSpaceMap[winId]
+        if helmSpaceId then
+                return tostring(helmSpaceId)
+        end
+
+        return "unassigned"
+end
+
+function Helm:_getMacosSpaceLabel(win)
+        if not hs.spaces or not hs.spaces.windowSpaces or not win then
+                return "unknown"
+        end
+
+        local ok, spaces = pcall(hs.spaces.windowSpaces, win)
+        if not ok or not spaces then
+                return "unknown"
+        end
+
+        if #spaces == 0 then
+                return "none"
+        end
+
+        local parts = {}
+        for _, spaceId in ipairs(spaces) do
+                table.insert(parts, tostring(spaceId))
+        end
+        return table.concat(parts, ", ")
+end
+
+function Helm:logWindowDebugInfo()
+        local windows = self.windowFilter and self.windowFilter:getWindows() or {}
+        self.logger.d("=== Window Debug Info (" .. #windows .. " windows) ===")
+        if #windows == 0 then
+                return
+        end
+
+        for index, win in ipairs(windows) do
+                local winId = win:id()
+                local screen = win:screen()
+                local screenId = screen and screen:id() or "nil"
+                local screenName = screen and screen:name() or "Unknown"
+                local helmSpace = self:_getWindowSpaceLabel(winId)
+                local macosSpaces = self:_getMacosSpaceLabel(win)
+
+                self.logger.d("  [" .. index .. "]")
+                self.logger.d('    Screen: "' .. screenName .. '" (ID: ' .. screenId .. ")")
+                self.logger.d("    Virtual Space: " .. helmSpace)
+                self.logger.d("    macOS Spaces: " .. macosSpaces)
+                winLogger.logWindowDetails(win, self.logger, "    ")
+        end
+end
+
 function Helm:init()
 	self:_initSpaces()
 	return self
@@ -827,16 +880,7 @@ function Helm:start()
 			end
 			return true
 		end)
-		-- Log all windows currently allowed by the filter
 		local windows = self.windowFilter:getWindows()
-		self.logger.d("Window filter created with " .. #windows .. " windows:")
-		for i, win in ipairs(windows) do
-			local screen = win:screen()
-			local screenName = screen and screen:name() or "Unknown"
-			self.logger.d("  [" .. i .. "]")
-			self.logger.d('    Screen: "' .. screenName .. '" (ID: ' .. (screen and screen:id() or "nil") .. ")")
-			winLogger.logWindowDetails(win, self.logger, "    ")
-		end
 
 		-- Initialize window order based on current x positions
 		self:_initializeWindowOrderFromCurrentPositions(windows)
@@ -1206,6 +1250,9 @@ function Helm:bindHotkeys(mapping)
 		end,
 		moveWindowToSpace5 = function()
 			self:moveFocusedWindowToSpace(5)
+		end,
+		logWindowDebugInfo = function()
+			self:logWindowDebugInfo()
 		end,
 	}
 	hs.spoons.bindHotkeysToSpec(spec, mapping)

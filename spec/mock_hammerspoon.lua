@@ -19,15 +19,18 @@ local mainScreen = nil
 
 local function createMockScreen()
 	screenIdCounter = screenIdCounter + 1
-	return {
-		_id = screenIdCounter,
-		frame = function()
-			return { x = 0, y = 0, w = 1920, h = 1080 }
-		end,
-		id = function(self)
-			return self._id
-		end,
-	}
+		return {
+			_id = screenIdCounter,
+			frame = function()
+				return { x = 0, y = 0, w = 1920, h = 1080 }
+			end,
+			id = function(self)
+				return self._id
+			end,
+			name = function()
+				return "Mock Screen"
+			end,
+		}
 end
 
 local function getMainScreen()
@@ -102,22 +105,23 @@ function M.reset()
 	screenIdCounter = 0
 	mainScreen = nil
 
-	_G.hs = {
-		spoons = {
-			resourcePath = function(filename)
-				return "./" .. filename
-			end,
-		},
-		logger = {
-			new = function()
-				return createMockLogger()
-			end,
-		},
-		screen = {
-			mainScreen = function()
-				return getMainScreen()
-			end,
-		},
+		_G.hs = {
+			spoons = {
+				resourcePath = function(filename)
+					return "./" .. filename
+				end,
+			},
+			logger = {
+				new = function()
+					return createMockLogger()
+				end,
+			},
+			spaces = {},
+			screen = {
+				mainScreen = function()
+					return getMainScreen()
+				end,
+			},
 		window = {
 			filter = {
 				new = function()
