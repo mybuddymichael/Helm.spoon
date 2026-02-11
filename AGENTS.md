@@ -2,6 +2,7 @@
 - IMPORTANT: Always use test-driven development and red-green-refactor for all development.
 - Always start with tests, make sure they fail, then implement functionality to make them pass.
 - Use `busted` for tests.
+- Always run tests after completing a feature.
 
 ## Architecture
 - Keep files as small as possible.
@@ -11,7 +12,7 @@
 - The macOS "Displays have separate Spaces" setting is not required for Helm's virtual spaces.
 
 ## Research
-- Research first, develop a plan, present the plan to the user, then wait for affirmation before continuing.
+- Always research first and develop a plan, then execute the plan.
 
 ## Misc
 - Confirm you have read these instructions by starting each conversation with "Custom instructions understood."

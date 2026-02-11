@@ -380,9 +380,9 @@ describe("Helm columns", function()
 			assert.are.same({ 30 }, Helm.spaces[1].columns[2].windowIds)
 			assert.are.same({ 40, 50 }, Helm.spaces[1].columns[3].windowIds)
 		end)
-	end)
+		end)
 
-	describe("moveWindowToSpace with columns", function()
+		describe("moveWindowToSpace with columns", function()
 		before_each(function()
 			-- Set up two spaces with columns
 			Helm.spaces[1].columns = {
@@ -433,9 +433,134 @@ describe("Helm columns", function()
 			assert.are.same({ 40 }, Helm.spaces[2].columns[1].windowIds)
 			assert.are.same({ 30 }, Helm.spaces[2].columns[2].windowIds)
 		end)
-	end)
+		end)
 
-	describe("_distributeWindows with columns", function()
+		describe("focus navigation with columns", function()
+			before_each(function()
+				Helm.spaces[1].columns = {
+					{ windowIds = { 10, 20, 30 } },
+					{ windowIds = { 40 } },
+					{ windowIds = { 50, 60 } },
+				}
+				Helm.windowColumnMap = {
+					[10] = 1,
+					[20] = 1,
+					[30] = 1,
+					[40] = 2,
+					[50] = 3,
+					[60] = 3,
+				}
+				Helm.windowIds = { 10, 20, 30, 40, 50, 60 }
+				Helm.windowSpaceMap = {
+					[10] = 1,
+					[20] = 1,
+					[30] = 1,
+					[40] = 1,
+					[50] = 1,
+					[60] = 1,
+				}
+				Helm.activeSpaceId = 1
+				Helm.columns = Helm.spaces[1].columns
+				local win10 = mock.addMockWindow(10, true)
+				local win20 = mock.addMockWindow(20, true)
+				local win30 = mock.addMockWindow(30, true)
+				local win40 = mock.addMockWindow(40, true)
+				local win50 = mock.addMockWindow(50, true)
+				local win60 = mock.addMockWindow(60, true)
+				win10.focus = function() mock.setFocusedWindow(10) end
+				win20.focus = function() mock.setFocusedWindow(20) end
+				win30.focus = function() mock.setFocusedWindow(30) end
+				win40.focus = function() mock.setFocusedWindow(40) end
+				win50.focus = function() mock.setFocusedWindow(50) end
+				win60.focus = function() mock.setFocusedWindow(60) end
+			end)
+
+			it("focusUp should move within a column", function()
+				mock.setFocusedWindow(20)
+
+				Helm:focusUp()
+
+				assert.are.equal(10, hs.window.focusedWindow():id())
+			end)
+
+			it("focusUp should do nothing at top of column", function()
+				mock.setFocusedWindow(10)
+
+				Helm:focusUp()
+
+				assert.are.equal(10, hs.window.focusedWindow():id())
+			end)
+
+			it("focusDown should move within a column", function()
+				mock.setFocusedWindow(20)
+
+				Helm:focusDown()
+
+				assert.are.equal(30, hs.window.focusedWindow():id())
+			end)
+
+			it("focusDown should do nothing at bottom of column", function()
+				mock.setFocusedWindow(30)
+
+				Helm:focusDown()
+
+				assert.are.equal(30, hs.window.focusedWindow():id())
+			end)
+
+			it("focusRight should move to the next column", function()
+				mock.setFocusedWindow(20)
+
+				Helm:focusRight()
+
+				assert.are.equal(40, hs.window.focusedWindow():id())
+			end)
+
+			it("focusLeft should move to the previous column", function()
+				mock.setFocusedWindow(40)
+
+				Helm:focusLeft()
+
+				assert.are.equal(10, hs.window.focusedWindow():id())
+			end)
+
+                        it("focusLeft should do nothing at leftmost column", function()
+                                mock.setFocusedWindow(10)
+                                Helm:focusLeft()
+                                assert.are.equal(10, hs.window.focusedWindow():id())
+                        end)
+
+                        it("focusLeft should return to last focused window in target column", function()
+                                mock.setFocusedWindow(20)
+                                Helm:_handleWindowFocused(hs.window.focusedWindow())
+
+                                mock.setFocusedWindow(40)
+                                Helm:_handleWindowFocused(hs.window.focusedWindow())
+
+                                Helm:focusLeft()
+
+                                assert.are.equal(20, hs.window.focusedWindow():id())
+                        end)
+
+                        it("focusRight should return to last focused window in target column", function()
+                                mock.setFocusedWindow(60)
+                                Helm:_handleWindowFocused(hs.window.focusedWindow())
+
+                                mock.setFocusedWindow(40)
+                                Helm:_handleWindowFocused(hs.window.focusedWindow())
+
+                                Helm:focusRight()
+
+                                assert.are.equal(60, hs.window.focusedWindow():id())
+                        end)
+
+                        it("focusRight should do nothing at rightmost column", function()
+                                mock.setFocusedWindow(60)
+                                Helm:focusRight()
+                                assert.are.equal(60, hs.window.focusedWindow():id())
+			end)
+		end)
+
+		describe("_distributeWindows with columns", function()
 		before_each(function()
 			Helm.windowFilter = hs.window.filter.new()
 			Helm.activeSpaceId = 1
