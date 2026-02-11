@@ -1186,6 +1186,62 @@ function Helm:focusRight()
         self:_focusWindowId(targetId)
 end
 
+--- Move the current window up within its column
+function Helm:moveWindowUp()
+        local win = hs.window.focusedWindow()
+        if not win then
+                return
+        end
+        local id = win:id()
+        if not id then
+                return
+        end
+
+        local _, column, _, rowIndex = self:_getActiveColumnForWindow(id)
+        if not column or not rowIndex then
+                return
+        end
+
+        if #column.windowIds <= 1 or rowIndex <= 1 then
+                return
+        end
+
+        column.windowIds[rowIndex] = column.windowIds[rowIndex - 1]
+        column.windowIds[rowIndex - 1] = id
+        column.lastFocusedWindowId = id
+
+        self:_syncToActiveSpace()
+        self:_distributeWindows()
+end
+
+--- Move the current window down within its column
+function Helm:moveWindowDown()
+        local win = hs.window.focusedWindow()
+        if not win then
+                return
+        end
+        local id = win:id()
+        if not id then
+                return
+        end
+
+        local _, column, _, rowIndex = self:_getActiveColumnForWindow(id)
+        if not column or not rowIndex then
+                return
+        end
+
+        if #column.windowIds <= 1 or rowIndex >= #column.windowIds then
+                return
+        end
+
+        column.windowIds[rowIndex] = column.windowIds[rowIndex + 1]
+        column.windowIds[rowIndex + 1] = id
+        column.lastFocusedWindowId = id
+
+        self:_syncToActiveSpace()
+        self:_distributeWindows()
+end
+
 --- Move the current window left in the order (operates on entire columns)
 function Helm:moveWindowLeft()
 	local win = hs.window.focusedWindow()
@@ -1323,12 +1379,18 @@ function Helm:bindHotkeys(mapping)
 		focusUp = function()
 			self:focusUp()
 		end,
-		focusDown = function()
-			self:focusDown()
-		end,
-		moveWindowLeft = function()
-			self:moveWindowLeft()
-		end,
+        focusDown = function()
+                self:focusDown()
+        end,
+        moveWindowUp = function()
+                self:moveWindowUp()
+        end,
+        moveWindowDown = function()
+                self:moveWindowDown()
+        end,
+        moveWindowLeft = function()
+                self:moveWindowLeft()
+        end,
 		moveWindowRight = function()
 			self:moveWindowRight()
 		end,

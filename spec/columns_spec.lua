@@ -205,11 +205,11 @@ describe("Helm columns", function()
 		end)
 	end)
 
-	describe("barf", function()
-		before_each(function()
-			-- Set up space with a multi-window column
-			Helm.spaces[1].columns = {
-				{ windowIds = { 10, 20, 30 } },
+        describe("barf", function()
+                before_each(function()
+                        -- Set up space with a multi-window column
+                        Helm.spaces[1].columns = {
+                                { windowIds = { 10, 20, 30 } },
 				{ windowIds = { 40 } },
 			}
 			Helm.windowColumnMap = { [10] = 1, [20] = 1, [30] = 1, [40] = 2 }
@@ -280,11 +280,72 @@ describe("Helm columns", function()
 			Helm:barf()
 
 			assert.are.equal(3, #Helm.spaces[1].columns)
-			assert.are.same({ 20, 30 }, Helm.spaces[1].columns[1].windowIds)
-			assert.are.same({ 10 }, Helm.spaces[1].columns[2].windowIds)
-			assert.are.same({ 40 }, Helm.spaces[1].columns[3].windowIds)
-		end)
-	end)
+                        assert.are.same({ 20, 30 }, Helm.spaces[1].columns[1].windowIds)
+                        assert.are.same({ 10 }, Helm.spaces[1].columns[2].windowIds)
+                        assert.are.same({ 40 }, Helm.spaces[1].columns[3].windowIds)
+                end)
+        end)
+
+        describe("moveWindowUp and moveWindowDown within a column", function()
+                before_each(function()
+                        Helm.spaces[1].columns = {
+                                { windowIds = { 10, 20, 30 } },
+                                { windowIds = { 40 } },
+                        }
+                        Helm.windowColumnMap = { [10] = 1, [20] = 1, [30] = 1, [40] = 2 }
+                        Helm.windowIds = { 10, 20, 30, 40 }
+                        Helm.windowSpaceMap = { [10] = 1, [20] = 1, [30] = 1, [40] = 1 }
+                        Helm.activeSpaceId = 1
+                        Helm.columns = Helm.spaces[1].columns
+                        mock.addMockWindow(10, true)
+                        mock.addMockWindow(20, true)
+                        mock.addMockWindow(30, true)
+                        mock.addMockWindow(40, true)
+                end)
+
+                it("should move the focused window up within its column", function()
+                        mock.setFocusedWindow(20)
+
+                        Helm:moveWindowUp()
+
+                        assert.are.same({ 20, 10, 30 }, Helm.spaces[1].columns[1].windowIds)
+                        assert.are.same({ 40 }, Helm.spaces[1].columns[2].windowIds)
+                end)
+
+                it("should do nothing if the focused window is already topmost", function()
+                        mock.setFocusedWindow(10)
+
+                        Helm:moveWindowUp()
+
+                        assert.are.same({ 10, 20, 30 }, Helm.spaces[1].columns[1].windowIds)
+                end)
+
+                it("should move the focused window down within its column", function()
+                        mock.setFocusedWindow(20)
+
+                        Helm:moveWindowDown()
+
+                        assert.are.same({ 10, 30, 20 }, Helm.spaces[1].columns[1].windowIds)
+                        assert.are.same({ 40 }, Helm.spaces[1].columns[2].windowIds)
+                end)
+
+                it("should do nothing if the focused window is already bottommost", function()
+                        mock.setFocusedWindow(30)
+
+                        Helm:moveWindowDown()
+
+                        assert.are.same({ 10, 20, 30 }, Helm.spaces[1].columns[1].windowIds)
+                end)
+
+                it("should do nothing if the focused window is alone in its column", function()
+                        mock.setFocusedWindow(40)
+
+                        Helm:moveWindowUp()
+                        Helm:moveWindowDown()
+
+                        assert.are.same({ 40 }, Helm.spaces[1].columns[2].windowIds)
+                end)
+        end)
 
 	describe("moveWindowLeft with columns", function()
 		before_each(function()
